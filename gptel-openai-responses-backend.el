@@ -30,12 +30,13 @@
 (require 'gptel-openai)
 (require 'url)
 (require 'map)
+(require 'transient)
 
-(defcustom gptel-openai-response-include-file-search-results t
+(defcustom gptel-openai-responses-include-file-search-results t
   "Include file-search-results?"
   :type 'boolean)
 
-(defcustom gptel-openai-response-vector-store-ids nil
+(defcustom gptel-openai-responses-vector-store-ids nil
   "List of vector store ids to use when using file search tool."
   :type '(repeat string))
 
@@ -73,7 +74,7 @@
                        nil nil #'equal)
                   backend))))
 
-(defun gptel-openai-response--process-output (output-item info)
+(defun gptel-openai-responses--process-output (output-item info)
   ;; both streams output_item.done.item and the output-item in response are the same.
   (pcase (plist-get output-item :type)
     ("function_call"
@@ -102,7 +103,7 @@
     (_ ;; TODO handle others
      )))
 
-(defun gptel-openai-response--process-annotation (annotation info)
+(defun gptel-openai-responses--process-annotation (annotation info)
   "Returns string that can be added to content or nil."
   (pcase (plist-get annotation :type)
     ("file_citation"
@@ -114,7 +115,7 @@
   "JSON encode PROMPTS for sending to ChatGPT."
   (let* ((prompts (cl-call-next-method))
          (p prompts))
-    (when gptel-openai-response-include-file-search-results
+    (when gptel-openai-responses-include-file-search-results
       (plist-put prompts :include (vconcat (plist-get prompts :include)
                                           '("file_search_call.results"))))
     ;; Adding built-in tools
@@ -203,10 +204,10 @@ information if the stream contains it."
                  (push (plist-get json-response :delta) content-strs))
                 ("response.output_text.annotation.added"
                  (let ((annotation (plist-get json-response :annotation)))
-                   (push (gptel-openai-response--process-annotation annotation info) content-strs)))
+                   (push (gptel-openai-responses--process-annotation annotation info) content-strs)))
                 ("response.output_item.done"
                  (let ((output-item (plist-get json-response :item)))
-                   (gptel-openai-response--process-output output-item info)))))))
+                   (gptel-openai-responses--process-output output-item info)))))))
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
@@ -227,13 +228,13 @@ Mutate state INFO with response metadata."
               (list (map-nested-elt output-item '(:content 0 :text))
                     (string-join
                      (mapcar (lambda (annotation)
-                               (gptel-openai-response--process-annotation annotation info))
+                               (gptel-openai-responses--process-annotation annotation info))
                              (map-nested-elt output-item '(:content 0 :annotations)))
                      "\n"))
               "\n")
              into return-val
            else
-             do (gptel-openai-response--process-output output-item info)
+             do (gptel-openai-responses--process-output output-item info)
            finally return (funcall #'string-join return-val)))
 
 (cl-defmethod gptel--parse-tool-results ((_backend gptel-openai-responses) tool-use)
@@ -247,17 +248,17 @@ Mutate state INFO with response metadata."
    tool-use))
 
 ;;; Supporting built-in tools for responses ***********************************************
-(defclass gptel-openai-response--add-to-list-switch (transient-variable)
+(defclass gptel-openai-responses--add-to-list-switch (transient-variable)
   ((target-value :initarg :target-value)
    (target-list  :initarg :target-list)
    (format       :initarg :format      :initform " %k %d")
    ))
 
-(cl-defmethod transient-infix-read ((obj gptel-openai-response--add-to-list-switch))
+(cl-defmethod transient-infix-read ((obj gptel-openai-responses--add-to-list-switch))
   ;;Do nothing
   )
 
-(cl-defmethod transient-infix-set ((obj gptel-openai-response--add-to-list-switch) _)
+(cl-defmethod transient-infix-set ((obj gptel-openai-responses--add-to-list-switch) _)
   (if (member (oref obj target-value) (symbol-value (oref obj target-list)))
       (set (oref obj target-list)
            (delete (oref obj target-value) (symbol-value (oref obj target-list))))
@@ -266,7 +267,7 @@ Mutate state INFO with response metadata."
                  (list (oref obj target-value)))))
   (transient-setup))
 
-(cl-defmethod transient-format-description ((obj gptel-openai-response--add-to-list-switch))
+(cl-defmethod transient-format-description ((obj gptel-openai-responses--add-to-list-switch))
   (propertize (transient--get-description obj) 'face
               (if (member (oref obj target-value) (symbol-value (oref obj target-list)))
                   'transient-value
@@ -278,25 +279,26 @@ Mutate state INFO with response metadata."
 
 (defvar gptel-openai-responses--tools nil)
 
-(transient-define-prefix gptel-openai-response-built-in-tools ()
+;;;###autoload (autoload 'gptel-openai-responses-built-in-tools "gptel-openai-responses-backend" nil t)
+(transient-define-prefix gptel-openai-responses-built-in-tools ()
   [["Built in tools"
     ("wl" "web search (low context)" ""
-     :class gptel-openai-response--add-to-list-switch
+     :class gptel-openai-responses--add-to-list-switch
      :target-value (:type "web_search" :search_context_size "low")
      :target-list gptel-openai-responses--tools)
     ("wm" "web search (medium context)" ""
-     :class gptel-openai-response--add-to-list-switch
+     :class gptel-openai-responses--add-to-list-switch
      :target-value (:type "web_search" :search_context_size "medium")
      :target-list gptel-openai-responses--tools)
     ("wh" "web search (high context)" ""
-     :class gptel-openai-response--add-to-list-switch
+     :class gptel-openai-responses--add-to-list-switch
      :target-value (:type "web_search" :search_context_size "high")
      :target-list gptel-openai-responses--tools)
     ("fo" "File search (org)" ""
-     :class gptel-openai-response--add-to-list-switch
+     :class gptel-openai-responses--add-to-list-switch
      :target-value (lambda ()
                      `(:type "file_search"
-                             :vector_store_ids ,gptel-openai-response-vector-store-ids))
+                             :vector_store_ids ,gptel-openai-responses-vector-store-ids))
      :target-list gptel-openai-responses--tools)
     ""
     ("DEL" "Remove all" (lambda ()
