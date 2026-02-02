@@ -310,20 +310,23 @@ Mutate state INFO with response metadata."
     ("RET" "Done" transient-quit-one)
     ]])
 
-(transient-append-suffix 'gptel-menu '(0 -1)
-  [:if (lambda () (gptel-openai-responses-p gptel-backend))
-   ""
-   (:info
-    (lambda ()
-      (concat
-       "OpenAI Built-in tools"
-       (and gptel-openai-responses--tools
-            (concat " (" (propertize (format "%d"
-                                             (length gptel-openai-responses--tools))
-                                     'face 'warning)
-                    ")"))))
-    :format "%d" :face transient-heading)
-   (gptel-openai-response-built-in-tools :key "T" :description "Select")])
+;;;###autoload
+(defun gptel-openai-responses-setup-builtin-transient ()
+  "Configure `gptel-menu' with responses builtin tools."
+  (transient-append-suffix 'gptel-menu '(0 -1)
+    [:if (lambda () (gptel-openai-responses-p gptel-backend))
+         ""
+         (:info
+          (lambda ()
+            (concat
+             "OpenAI Built-in tools"
+             (and gptel-openai-responses--tools
+                  (concat " (" (propertize (format "%d"
+                                                   (length gptel-openai-responses--tools))
+                                           'face 'warning)
+                          ")"))))
+          :format "%d" :face transient-heading)
+         (gptel-openai-responses-built-in-tools :key "T" :description "Select")]))
 
 (provide 'gptel-openai-responses-backend)
 ;;; gptel-openai-responses-backend.el ends here
