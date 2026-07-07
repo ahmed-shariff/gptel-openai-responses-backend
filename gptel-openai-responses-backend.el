@@ -217,8 +217,12 @@ information if the stream contains it."
                                (plist-put info :file-search-call-results (plist-get item :results))))
                            (plist-get resp :output))
                    (plist-put info :stop-reason (plist-get resp :status))
-                   (plist-put info :tokens (gptel--openai-responses-update-tokens
-                                            (plist-get resp :usage) info))))))))
+                   (gptel--openai-responses-update-tokens
+                    (plist-get resp :usage) info)))
+                ;; Errors in streaming responses show up as data events with
+                ;; HTTP status 200, so we have to catch them here
+                ("error" (when-let* ((err (plist-get data :error)))
+                           (plist-put info :error err)))))))
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
@@ -229,8 +233,7 @@ Mutate state INFO with response metadata."
         (content-strs) (tool-use) (tool-calls))
     ;; Store usage info
     (plist-put info :stop-reason (plist-get response :status))
-    (plist-put info :tokens (gptel--openai-responses-update-tokens
-                             (plist-get response :usage) info))
+    (gptel--openai-responses-update-tokens (plist-get response :usage) info)
     ;; Process output items
     (cl-loop
      for item across output-items
