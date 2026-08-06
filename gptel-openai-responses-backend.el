@@ -37,6 +37,10 @@
   "Include file-search-results?"
   :type 'boolean)
 
+(defcustom gptel-openai-responses-extended-include-web-search-results t
+  "Include web-search sources."
+  :type 'boolean)
+
 (defcustom gptel-openai-responses-extended-vector-store-ids nil
   "List of vector store ids to use when using file search tool."
   :type '(repeat string))
@@ -118,6 +122,9 @@
     (when gptel-openai-responses-extended-include-file-search-results
       (plist-put prompts :include (vconcat (plist-get prompts :include)
                                           '("file_search_call.results"))))
+    (when gptel-openai-responses-extended-include-web-search-results
+      (plist-put prompts :include (vconcat (plist-get prompts :include)
+                                           '("web_search_call.action.sources"))))
     ;; Adding built-in tools
     (when gptel-openai-responses-extended--tools
       (plist-put prompts :tools (vconcat (plist-get prompts :tools)
@@ -212,9 +219,12 @@ information if the stream contains it."
                  (when-let* ((resp (plist-get data :response)))
                    ;; KLUDGE: `gptel--parse-response' handles this as well.
                    (mapcar (lambda (item)
-                             (when (equal (plist-get item :type) "file_search_call")
-                               (plist-put info :file-search-call-queries (plist-get item :queries))
-                               (plist-put info :file-search-call-results (plist-get item :results))))
+                             (pcase (plist-get item :type)
+                               ("file_search_call"
+                                (plist-put info :file-search-call-queries (plist-get item :queries))
+                                (plist-put info :file-search-call-results (plist-get item :results)))
+                               ("web_search_call"
+                                (plist-put info :web-search-call-action (plist-get item :action)))))
                            (plist-get resp :output))
                    (plist-put info :stop-reason (plist-get resp :status))
                    (gptel--openai-responses-update-tokens
@@ -300,7 +310,9 @@ Mutate state INFO with response metadata."
           (push (format "\n[File search: %d results]" (length results))
                 content-strs))
         (plist-put info :file-search-call-queries (plist-get item :queries))
-        (plist-put info :file-search-call-results (plist-get item :results)))))
+        (plist-put info :file-search-call-results (plist-get item :results)))
+       ("web_search_call"
+        (plist-put info :web-search-call-action (plist-get item :action)))))
     ;; Store tool calls for user-defined function tools
     (when tool-use
       (plist-put info :tool-use (nreverse tool-use))
