@@ -289,6 +289,7 @@ Mutate state INFO with response metadata."
        ("web_search_call"
         (when-let* ((status (plist-get item :status))
                     ((equal status "completed")))
+          (plist-put info :web-search-call-action (plist-get item :action))
           ;; Results are inline, just note that search was done
           (push "\n[Web search completed]" content-strs)))
        ;; Code interpreter output (server-side tool)
@@ -310,9 +311,7 @@ Mutate state INFO with response metadata."
           (push (format "\n[File search: %d results]" (length results))
                 content-strs))
         (plist-put info :file-search-call-queries (plist-get item :queries))
-        (plist-put info :file-search-call-results (plist-get item :results)))
-       ("web_search_call"
-        (plist-put info :web-search-call-action (plist-get item :action)))))
+        (plist-put info :file-search-call-results (plist-get item :results)))))
     ;; Store tool calls for user-defined function tools
     (when tool-use
       (plist-put info :tool-use (nreverse tool-use))
